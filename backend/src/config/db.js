@@ -20,6 +20,8 @@ const pool = connectionString
       // instances, and managed Postgres poolers (e.g. Neon pgbouncer) fan out.
       max: parseInt(process.env.DB_POOL_MAX || '10', 10),
       idleTimeoutMillis: 30000,
+      // Fail fast if the DB is unreachable rather than hanging the request.
+      connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT || '8000', 10),
     })
   : new Pool({
       host: process.env.DB_HOST || 'postgres',
@@ -29,6 +31,7 @@ const pool = connectionString
       database: process.env.DB_NAME || 'aaa_portal',
       max: parseInt(process.env.DB_POOL_MAX || '20', 10),
       idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT || '8000', 10),
     });
 
 pool.on('error', (err) => {

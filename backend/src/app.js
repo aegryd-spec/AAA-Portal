@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Forward rejections from async route handlers to the error middleware.
+// Without this, Express 4 leaves a failed async handler hanging with no
+// response (e.g. a DB outage would freeze the request instead of 500-ing).
+require('express-async-errors');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -43,6 +47,13 @@ app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err);
+  // Surface DB-connectivity failures as a clear 503 instead of a generic 500,
+  // so the UI can tell the user the service/database isn't reachable.
+  const dbDown = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'].includes(err.code)
+    || /timeout|terminating connection|connection.*(closed|reset)/i.test(err.message || '');
+  if (dbDown) {
+    return res.status(503).json({ error: 'Database unavailable — the server could not reach its database.' });
+  }
   res.status(500).json({ error: 'Internal server error' });
 });
 
