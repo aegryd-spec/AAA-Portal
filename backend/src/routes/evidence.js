@@ -3,10 +3,10 @@ const multer = require('multer');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
-const { minioClient, BUCKET } = require('../config/storage');
+const { putEvidence, getDownloadUrl, MAX_UPLOAD_BYTES } = require('../config/storage');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }); // 25MB/file
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
 
 router.post('/:submissionId', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required (multipart field "file")' });
@@ -18,10 +18,8 @@ router.post('/:submissionId', requireAuth, upload.single('file'), async (req, re
     return res.status(403).json({ error: 'Cannot attach evidence to another school\'s submission' });
   }
 
-  const storageKey = `${submission.school_id}/${submission.id}/${crypto.randomUUID()}-${req.file.originalname}`;
-  await minioClient.putObject(BUCKET, storageKey, req.file.buffer, req.file.size, {
-    'Content-Type': req.file.mimetype,
-  });
+  const objectKey = `${submission.school_id}/${submission.id}/${crypto.randomUUID()}-${req.file.originalname}`;
+  const { storageKey } = await putEvidence(objectKey, req.file.buffer, req.file.size, req.file.mimetype);
 
   const { rows } = await pool.query(
     `INSERT INTO evidence_documents (submission_id, file_name, storage_key, content_type, size_bytes, uploaded_by)
@@ -39,12 +37,13 @@ router.get('/:submissionId', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-// Time-limited pre-signed download URL — files are never served through the API directly
+// Time-limited pre-signed download URL (MinIO) or public object URL (Blob) —
+// files are never streamed through the API directly.
 router.get('/download/:evidenceId', requireAuth, async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM evidence_documents WHERE id = $1', [req.params.evidenceId]);
   const doc = rows[0];
   if (!doc) return res.status(404).json({ error: 'Evidence not found' });
-  const url = await minioClient.presignedGetObject(BUCKET, doc.storage_key, 15 * 60); // 15 min
+  const url = await getDownloadUrl(doc.storage_key);
   res.json({ url, file_name: doc.file_name });
 });
 
