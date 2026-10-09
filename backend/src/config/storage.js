@@ -6,8 +6,8 @@ const Minio = require('minio');
 // deployment (or point this client at real S3 by changing env vars only).
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT || 'minio',
-  port: parseInt(process.env.MINIO_PORT || '9000', 10),
-  useSSL: false,
+  port: process.env.MINIO_PORT ? parseInt(process.env.MINIO_PORT, 10) : undefined,
+  useSSL: process.env.MINIO_USE_SSL === 'true',
   accessKey: process.env.MINIO_ACCESS_KEY || 'aaa_minio_admin',
   secretKey: process.env.MINIO_SECRET_KEY || 'aaa_minio_password',
 });
